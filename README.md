@@ -109,7 +109,8 @@ along the ground, and a distant **howl** sounds at random intervals.
 On phones and tablets the controls appear automatically (and hide again on desktop):
 
 - **Left side — floating joystick:** touch anywhere on the left to move; push **up** to jump.
-- **Right side — action buttons:** 🗡 Slash · 💥 Heavy (hold to charge) · 💨 Dash · ⤒ Jump · 🛡 Block (hold to block / tap-and-hold for a parry).
+- **Right side — action buttons:** 🗡 Slash · 💥 Heavy (hold to charge) · ⚡ Dash · ⤒ Jump · 🛡 Block (hold to block / tap-and-hold for a parry).
+- **Top-right:** 🔊 / 🔇 mute toggle (saved across reloads) and ⛶ fullscreen.
 - **Fullscreen button** (⛶, top-right) toggles fullscreen.
 - The controls are deliberately low-opacity so the fight stays visible. Play in **landscape** —
   a prompt appears if you're in portrait.

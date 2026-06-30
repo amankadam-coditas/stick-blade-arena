@@ -78,7 +78,11 @@
     background:rgba(8,12,26,.5);border:1px solid rgba(255,255,255,.22);color:rgba(255,255,255,.8);
     font:20px/1 system-ui;padding:0;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:none}
   #btnFull:active{transform:none;background:rgba(255,210,77,.3)}
-  #btnExit{position:fixed;top:10px;right:64px;z-index:7;height:44px;padding:0 14px;border-radius:10px;
+  #btnMute{position:fixed;top:10px;right:64px;z-index:7;width:44px;height:44px;border-radius:10px;
+    background:rgba(8,12,26,.5);border:1px solid rgba(255,255,255,.22);color:rgba(255,255,255,.8);
+    font:20px/1 system-ui;padding:0;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:none}
+  #btnMute:active{transform:none;background:rgba(255,210,77,.3)}
+  #btnExit{position:fixed;top:10px;right:118px;z-index:7;height:44px;padding:0 14px;border-radius:10px;
     background:rgba(8,12,26,.5);border:1px solid rgba(255,255,255,.22);color:rgba(255,255,255,.82);
     font:600 13px system-ui;cursor:pointer;display:none;align-items:center;justify-content:center;box-shadow:none}
   #btnExit:active{transform:none;background:rgba(255,210,77,.3)}
@@ -139,7 +143,7 @@
   <div id="joyZone"></div>
   <div id="joyBase"><div id="joyKnob"></div></div>
   <div id="btnGroup">
-    <button class="tbtn" id="tDash"><span class="ic">💨</span><span class="lb">DASH</span></button>
+    <button class="tbtn" id="tDash"><span class="ic">⚡</span><span class="lb">DASH</span></button>
     <button class="tbtn" id="tBlock"><span class="ic">🛡</span><span class="lb">BLOCK</span></button>
     <button class="tbtn" id="tJump"><span class="ic">⤒</span><span class="lb">JUMP</span></button>
     <button class="tbtn" id="tHeavy"><span class="ic">💥</span><span class="lb">HEAVY</span></button>
@@ -147,6 +151,7 @@
   </div>
 </div>
 <button id="btnExit" title="Exit to main menu">⟵ Menu</button>
+<button id="btnMute" title="Mute / unmute sound">🔊</button>
 <button id="btnFull" title="Toggle fullscreen">⛶</button>
 <button id="btnRestart">↺ Fight Again</button>
 <div id="rotate"><div style="font-size:44px">📱↻</div><div>Rotate your device to landscape to play</div></div>
@@ -264,7 +269,8 @@ cv.addEventListener('touchmove',e=>{ e.preventDefault(); },{passive:false});
 window.addEventListener('blur',()=>{Input.down.clear();});
 
 /* ---------- §5  Audio (procedural WebAudio) ---------- */
-const Audio={ ctx:null, master:null, sfx:null, mus:null, noiseBuf:null, ready:false, lastStep:{}, droneGain:null };
+const Audio={ ctx:null, master:null, sfx:null, mus:null, noiseBuf:null, ready:false, lastStep:{}, droneGain:null, vol:0.85, muted:false };
+try{ Audio.muted = localStorage.getItem('sba_muted')==='1'; }catch(e){}
 function audioResume(){
   try{
     if(!Audio.ctx){
@@ -272,7 +278,7 @@ function audioResume(){
       const ac=new AC(); Audio.ctx=ac;
       const comp=ac.createDynamicsCompressor();
       comp.threshold.value=-14; comp.ratio.value=4; comp.attack.value=0.003; comp.release.value=0.18;
-      const master=ac.createGain(); master.gain.value=0.85; comp.connect(master); master.connect(ac.destination);
+      const master=ac.createGain(); master.gain.value=Audio.muted?0:Audio.vol; comp.connect(master); master.connect(ac.destination);
       const sfx=ac.createGain(); sfx.gain.value=0.9; sfx.connect(comp);
       const mus=ac.createGain(); mus.gain.value=0.5; mus.connect(comp);
       const nb=ac.createBuffer(1,ac.sampleRate*2,ac.sampleRate); const d=nb.getChannelData(0);
@@ -1825,6 +1831,11 @@ function toggleFullscreen(){ try{ const d=document, el=d.documentElement;
   if(!d.fullscreenElement && !d.webkitFullscreenElement){ (el.requestFullscreen||el.webkitRequestFullscreen||function(){}).call(el); }
   else { (d.exitFullscreen||d.webkitExitFullscreen||function(){}).call(d); } }catch(e){} }
 $('btnFull').addEventListener('click',e=>{ e.preventDefault(); audioResume(); toggleFullscreen(); });
+function applyMuteIcon(){ const b=$('btnMute'); if(b){ b.textContent=Audio.muted?'🔇':'🔊'; b.title=(Audio.muted?'Unmute':'Mute')+' sound'; } }
+function setMuted(m){ Audio.muted=m; try{ localStorage.setItem('sba_muted', m?'1':'0'); }catch(e){}
+  if(Audio.master) Audio.master.gain.value = m?0:Audio.vol; applyMuteIcon(); }
+$('btnMute').addEventListener('click',e=>{ e.preventDefault(); setMuted(!Audio.muted); if(!Audio.muted) audioResume(); });
+applyMuteIcon();
 $('btnExit').addEventListener('click',e=>{ e.preventDefault(); audioResume(); if(App.mode==='mp') leaveMP(''); else if(App.mode==='practice') backToMenu(); });
 $('btnRestart').addEventListener('click',e=>{ e.preventDefault(); audioResume(); if(App.mode==='practice' && Game.state==='gameover') restartPractice(); });
 
