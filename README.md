@@ -62,6 +62,26 @@ Rapid and sustained kills trigger callouts with a sound sting — **First Blood*
 Multi / Monster Kill** (kills in quick succession), and spree milestones **Killing Spree → Rampage →
 Unstoppable → Godlike**. Dying resets your spree. A **FIGHT!** / **DEATHMATCH** banner opens each run.
 
+### Enemy taunts (Practice)
+
+Enemies and bosses now **talk back**. A little speech bubble pops above a fighter (with a short, muffled
+voice grunt) on three beats:
+
+- **On spawn** — they size you up as the wave begins (*"Fresh meat."*, *"RAAAGH!"*, the boss bellows
+  *"You DARE enter my arena?"*). Bubbles are staggered so the whole wave doesn't shout at once.
+- **At low HP** (≤35%) — a wounded snarl, fired once (*"Just… a scratch!"*, *"This cannot be!"*).
+- **On a kill** — whoever lands the killing blow on you gloats (*"Stay down."*, *"Insignificant."*).
+
+Each archetype (grunt / berserker / heavy / boss) has its own voice and lines; bosses get larger,
+gruffer bubbles. Aggressive lines glow red and shout.
+
+### Cinematic intro (Practice)
+
+Each Practice run opens with a ~3-second **walk-in cutscene**: the arena dims to a backlit silhouette
+behind cinematic letterbox bars, your stickman strides in from off-screen while the waiting enemies
+stand ready, the lights come up, and then the **FIGHT!** banner drops and play begins. Press any key
+(or tap) to **skip** it.
+
 ### Mid-arena pickups (Practice)
 
 Glowing tokens rise from the ground each wave — a beam of light with a bobbing core. Walk over one

@@ -375,6 +375,16 @@ function sfxHowl(){ if(!Audio.ready) return; const ac=Audio.ctx,t=ac.currentTime
   out.gain.exponentialRampToValueAtTime(0.11,t+1.6); out.gain.exponentialRampToValueAtTime(0.0001,t+2.5);
   o.connect(bp); bp.connect(out); o.start(t); o.stop(t+2.55);
 }
+function sfxBark(x,big){ if(!Audio.ready) return; if(!throttled('bk',90))return; const ac=Audio.ctx,t=ac.currentTime,pan=panFor(x);
+  // a short muffled "voice grunt" — two band-passed syllables, lower & gruffer for bosses
+  const out=gNode(0.0001); const dst=pan||Audio.sfx; if(pan) pan.connect(Audio.sfx);
+  const bp=ac.createBiquadFilter(); bp.type='bandpass'; bp.frequency.value=big?520:780; bp.Q.value=5;
+  const o=ac.createOscillator(); o.type='sawtooth'; const base=big?90:150;
+  o.frequency.setValueAtTime(base,t); o.frequency.linearRampToValueAtTime(base*1.5,t+0.06); o.frequency.linearRampToValueAtTime(base*1.15,t+0.14);
+  out.gain.setValueAtTime(0.0001,t);
+  out.gain.exponentialRampToValueAtTime(big?0.22:0.16,t+0.02); out.gain.exponentialRampToValueAtTime(0.02,t+0.08);   // syllable 1
+  out.gain.exponentialRampToValueAtTime(big?0.18:0.13,t+0.12); out.gain.exponentialRampToValueAtTime(0.0001,t+0.2);  // syllable 2
+  o.connect(bp); bp.connect(out); out.connect(dst); o.start(t); o.stop(t+0.22); }
 function sfxStep(x){ if(!Audio.ready) return; if(!throttled('st',60))return; const ac=Audio.ctx,t=ac.currentTime, pan=panFor(x);
   const n=noiseSrc(),lp=ac.createBiquadFilter(),g=gNode(0.0001); lp.type='lowpass'; lp.frequency.value=rand(280,420);
   g.gain.setValueAtTime(0.0001,t); g.gain.exponentialRampToValueAtTime(0.18,t+0.003); g.gain.exponentialRampToValueAtTime(0.0001,t+0.07);
@@ -544,6 +554,7 @@ function makeFighter(x,team,archName){
     blockHeld:false, blockStart:-99, hurtT:0, hurtDir:1, deathT:-1, fury:0,
     dashT:0, dashCdUntil:0, dashDir:1, charging:false, chargeT:0,
     walkPhase:rand(0,TAU), animT:rand(0,10), pose:defPose(),
+    bark:null, barkPend:null, lowBarked:false,                 // taunt/dialogue bubbles
     cdUntil:0, decisionAt:0, blockUntil:0, side:1, standoff:90,
     trail:[],
     // multiplayer
@@ -558,6 +569,7 @@ const World={ player:null, enemies:[], wave:0, score:0, combo:0, comboT:0, waveT
 const Sky={ blood:0 };   // 0..1 blood-moon atmosphere, eased in updateFX
 const Announce={ multi:0, lastKillT:-99, spree:0, first:true };   // kill-streak announcer
 const Intro={ t:0, title:'', sub:'' };                            // match/boss intro banner
+const Cutscene={ t:0, dur:0, toX:0, speed:0, camX:0, title:'', sub:'' };   // 3s silhouette walk-in before FIGHT!
 // mid-arena pickups (practice): grab to trigger. All effects are self-contained.
 const PICKUPS={
   heal:   {name:'HEALTH',   col:'#ff4d6d', glow:'#ff9bb0', glyph:'heart'},
@@ -612,6 +624,7 @@ function spawnWave(n){
       e.standoff=120; e.decisionAt=STime+rand(0.7,1.1);
     }
     if(World.bloodMoon){ e.rage=true; e.speed*=1.28; e.dmgScale*=1.2; e.color='#ff4d4d'; e.glow='#ff7a6a'; }
+    e.nextTaunt=STime+rand(4,12)+i*0.5;                             // first idle taunt happens a few seconds into the fight
     World.enemies.push(e);
   }
   spawnWavePickups();
@@ -726,6 +739,7 @@ function resolveHit(a,b,cx){
   if(b.team===0) vignettePulse=1;
   if(a.team===0){ a.combo++; World.combo=a.combo; World.comboT=1.4; World.score+=Math.round((heavy?40:18)*(1+a.combo*0.12)); }
   World.tension=clamp(World.tension+0.08,0,1);
+  if(b.team===1 && b.hp>0 && !b.lowBarked && b.hp/b.hpMax<=0.35){ b.lowBarked=true; sayBark(b,'low',0.1); }   // wounded taunt
   if(b.hp<=0) killPractice(b,a);
 }
 // cinematic kill — ramps time back to normal over slowmoMax seconds
@@ -743,7 +757,7 @@ function killPractice(b,a){
   // extra-dramatic finish on the wave's final kill or a boss kill
   const lastKill = b.team===1 && a && a.team===0 && aliveEnemies()===0;  // b.hp already 0, so 0 left = final blow
   slowmoFinish(lastKill || b.isBoss); sfxDeath(b.x);
-  if(b.team===0){ resetSpree(); return; }   // the player died — reset the announcer streak
+  if(b.team===0){ resetSpree(); if(a&&a.team===1){ a.bark=null; sayBark(a,'kill',0.2); } return; }   // the player died — killer taunts; reset the announcer streak
   World.kills++; World.score+=120;
   if(a&&a.team===0){ upgradeWeapon(); announceKill(); }
   if(b.isBoss){   // boss bounty
@@ -867,6 +881,104 @@ function announceKill(){
 }
 function resetSpree(){ Announce.spree=0; Announce.multi=0; Announce.lastKillT=-99; }
 function startIntro(title,sub){ Intro.t=2.0; Intro.title=title; Intro.sub=sub||''; if(Audio.ready) sfxAnnounce(); }
+// 3-second silhouette walk-in: the player strides in from off-screen, then the FIGHT! banner fires.
+function beginCutscene(title,sub){
+  const p=World.player; if(!p){ setGame('playing'); startIntro(title,sub); return; }
+  Cutscene.dur=Cutscene.t=2.6; Cutscene.title=title; Cutscene.sub=sub||'';
+  Cutscene.toX=p.x; Cutscene.camX=p.x;
+  const fromX=p.x-(CFG.W*0.5+90);                       // start just off the left edge of the framed view
+  p.x=p.px=fromX; p.facing=1; p.vx=0; p.state='run'; p.walkPhase=0; p.pose=defPose();
+  const walkTime=Math.max(0.6, Cutscene.dur-0.45);      // arrive ~0.45s before the banner, then settle
+  Cutscene.speed=(Cutscene.toX-fromX)/walkTime;
+  Cam.x=Cutscene.camX; Cam.zoom=1; Cam.tz=1; Shake.trauma=0;
+  setGame('intro');
+}
+function updateCutscene(dt){
+  const p=World.player; if(!p){ setGame('playing'); startIntro(Cutscene.title,Cutscene.sub); return; }
+  Cutscene.t-=dt;
+  if(p.x < Cutscene.toX-1.5){                            // still walking in
+    p.x=Math.min(Cutscene.toX, p.x+Cutscene.speed*dt); p.px=p.x;
+    p.vx=Cutscene.speed; p.facing=1; p.state='run';
+    p.walkPhase+=dt*Math.min(Cutscene.speed/26,14); p.animT+=dt;
+  } else {                                               // arrived — stand ready
+    p.x=Cutscene.toX; p.px=p.x; p.vx=0; p.state='idle'; p.animT+=dt;
+  }
+  blendPose(p, locomotionPose(p), dt, false);
+  for(const e of World.enemies){ e.px=e.x; e.animT+=dt; e.facing=e.x>p.x?-1:1; e.state='idle'; blendPose(e, locomotionPose(e), dt, false); }
+  Cam.zoom += (1-Cam.zoom)*(1-Math.exp(-6*dt)); Cam.tz=1;
+  Cam.x += (Cutscene.camX-Cam.x)*(1-Math.exp(-4*dt));
+  Cam.y += ((CFG.GROUND_Y-170)-Cam.y)*(1-Math.exp(-5*dt));
+  if(Cutscene.t<=0){ p.vx=0; p.state='idle'; setGame('playing'); clearBuffers(); startIntro(Cutscene.title,Cutscene.sub); }
+}
+/* ---------- §10b-bis  Taunt / dialogue bubbles (enemies & bosses bark on spawn, low HP, kill) ---------- */
+const BARKS={
+  grunt:    { spawn:['Mid.','Yawn.','Free.','Trash.','Bot.','Weak.','Cope.','Nope.','Tiny.','Pathetic.'],
+              low:['Whatever.','Lag.','Lucky.','Still?','Barely.'],
+              kill:['Erased.','Wasted.','Deleted.','Folded.','Snapped.','Gone.','Next.','Rekt.','Sit.','Bye.'] },
+  berserker:{ spawn:['Mid.','Yawn.','Free.','Trash.','Bot.','Weak.','Cope.','Nope.','Tiny.','Pathetic.'],
+              low:['Whatever.','Lag.','Lucky.','Still?','Barely.'],
+              kill:['Erased.','Wasted.','Deleted.','Folded.','Snapped.','Gone.','Next.','Rekt.','Sit.','Bye.'] },
+  heavy:    { spawn:['Mid.','Yawn.','Free.','Trash.','Bot.','Weak.','Cope.','Nope.','Tiny.','Pathetic.'],
+              low:['Whatever.','Lag.','Lucky.','Still?','Barely.'],
+              kill:['Erased.','Wasted.','Deleted.','Folded.','Snapped.','Gone.','Next.','Rekt.','Sit.','Bye.'] },
+  boss:     { spawn:['Kneel.','Beneath.','Inevitable.','Insignificant.','Crushed.','Mine.'],
+              low:['Impossible.','Never.','Cannot.'],
+              kill:['Insignificant.','Crushed.','Beneath.','Erased.'] },
+};
+const BARK_FALLBACK={ spawn:['…','Heh.'], low:['Ugh!'], kill:['Done.'] };
+function pickLine(arch,cat){ const t=(BARKS[arch]||{})[cat]||BARK_FALLBACK[cat]||['…']; return t[(Math.random()*t.length)|0]; }
+function sayBark(f,cat,delay){ if(!f||f.team!==1) return; f.barkPend={cat, t:Math.max(0,delay||0)}; }   // enemies/bosses only
+function emitBark(f,cat){
+  if(f.hp<=0 || f.deathT>=0) return;
+  const big=!!f.isBoss;
+  f.bark={ text:pickLine(f.arch,cat), t:0, life:big?2.6:1.9, big, shout:cat!=='spawn'||f.arch==='berserker' };
+  if(Audio.ready) sfxBark(f.x, big);
+}
+function tickBark(f,dt){
+  if(f.barkPend){ f.barkPend.t-=dt; if(f.barkPend.t<=0){ const c=f.barkPend.cat; f.barkPend=null; emitBark(f,c); } }
+  if(f.bark){ f.bark.t+=dt; if(f.bark.t>=f.bark.life || (f.hp<=0&&f.deathT>0.5)) f.bark=null; }
+  // occasional idle taunt during the fight (not on spawn) — only one enemy chatters at a time
+  if(f.team===1 && f.hp>0 && f.deathT<0 && f.spawnT<=0 && !f.bark && !f.barkPend && f.nextTaunt!==undefined && STime>=f.nextTaunt){
+    if(Math.random()<0.5 && !World.enemies.some(o=>o!==f&&o.bark)) emitBark(f,'spawn');
+    f.nextTaunt=STime+rand(8,18);
+  }
+}
+function drawBark(f){
+  if(!f.bark) return; const b=f.bark, k=b.t/b.life;
+  const a=clamp(k/0.10,0,1)*clamp((1-k)/0.22,0,1);   // pop in, fade out
+  if(a<=0.01) return;
+  const pop=1+0.18*clamp((b.t)/0.12,0,1)*(b.t<0.14?1:0);
+  const x=f.x, y=f.y-PELVIS_H-(b.big?118:92)*f.size - Math.min(b.t,0.4)*10;
+  ctx.save(); ctx.globalAlpha=a; ctx.textAlign='center'; ctx.textBaseline='middle';
+  const size=Math.round((b.big?16:11)*pop);
+  ctx.font=`${b.shout?'800':'700'} ${size}px 'Segoe UI',sans-serif`;
+  const w=ctx.measureText(b.text).width+26, h=size+16, rx=x-w/2, ry=y-h/2, r=9;
+  // rounded bubble
+  ctx.beginPath();
+  ctx.moveTo(rx+r,ry); ctx.arcTo(rx+w,ry,rx+w,ry+h,r); ctx.arcTo(rx+w,ry+h,rx,ry+h,r);
+  ctx.arcTo(rx,ry+h,rx,ry,r); ctx.arcTo(rx,ry,rx+w,ry,r); ctx.closePath();
+  ctx.fillStyle='rgba(10,8,14,0.82)'; ctx.fill();
+  ctx.lineWidth=2; ctx.strokeStyle=b.shout?'rgba(255,90,90,0.9)':(f.glow||f.color); ctx.stroke();
+  // tail pointing down to the speaker
+  ctx.beginPath(); ctx.moveTo(x-7,ry+h-1); ctx.lineTo(x+7,ry+h-1); ctx.lineTo(x,ry+h+10); ctx.closePath();
+  ctx.fillStyle='rgba(10,8,14,0.82)'; ctx.fill();
+  ctx.fillStyle=b.shout?'#ff8a8a':'#eef2ff'; ctx.shadowColor='rgba(0,0,0,0.7)'; ctx.shadowBlur=4;
+  ctx.fillText(b.text,x,y); ctx.restore();
+}
+function drawCutscene(){
+  if(Game.state!=='intro') return;
+  const prog=clamp(1-Cutscene.t/Cutscene.dur,0,1);
+  const fade=clamp((prog-0.80)/0.20,0,1);                // arena lights up over the final 20%
+  const dim=lerp(0.62,0,easeOut(fade))+0.10*(1-fade);    // backlit dim so fighters read as silhouettes
+  ctx.fillStyle=`rgba(3,4,10,${dim})`; ctx.fillRect(0,0,CFG.W,CFG.H);
+  const barT=Math.min(clamp(prog/0.12,0,1), clamp((1-prog)/0.15,0,1));   // cinematic letterbox slides in, retracts at the end
+  const bar=CFG.H*0.11*barT;
+  if(bar>0.5){ ctx.fillStyle='#000'; ctx.fillRect(0,0,CFG.W,bar); ctx.fillRect(0,CFG.H-bar,CFG.W,bar); }
+  const hint=clamp(prog/0.2,0,1)*(1-fade);
+  ctx.save(); ctx.globalAlpha=0.5*hint; ctx.textAlign='center'; ctx.textBaseline='middle';
+  ctx.fillStyle='#cdd9ec'; ctx.font="600 16px 'Segoe UI',sans-serif";
+  ctx.fillText('press any key to skip', CFG.W/2, CFG.H-bar-26); ctx.restore();
+}
 function drawIntro(){ if(Intro.t<=0) return; const k=Intro.t;
   const inA=clamp((2.0-k)/0.25,0,1), outA=clamp(k/0.4,0,1), a=Math.min(inA,outA);
   const slide=(1-inA)*60;
@@ -1041,6 +1153,7 @@ function sysTimers(f,dt){
   else if(f.state==='dead') target=deathPose(f);
   else target=locomotionPose(f);
   blendPose(f,target,dt,!!f.atk||f.state==='dead'||f.state==='dash');
+  tickBark(f,dt);
 }
 
 /* ---------- §15  Camera ---------- */
@@ -1491,7 +1604,7 @@ function render(alpha){
   for(const e of o) if(e.hp>0) drawFighter(e,alpha);
   if(World.player) drawFighter(World.player,alpha);
   if(App.mode==='mp') for(const e of o) drawNameTag(e);
-  else for(const e of o) if(e.team===1) drawNameTag(e);
+  else { for(const e of o) if(e.team===1){ drawNameTag(e); drawBark(e); } }
   ctx.save(); ctx.globalCompositeOperation='lighter';
   for(const fl of flashes){ const a=fl.life/fl.max;
     if(fl.kind==='radial'){ const g=ctx.createRadialGradient(fl.x,fl.y,0,fl.x,fl.y,fl.r); g.addColorStop(0,fl.col); g.addColorStop(1,'rgba(255,255,255,0)'); ctx.globalAlpha=a; ctx.fillStyle=g; ctx.beginPath(); ctx.arc(fl.x,fl.y,fl.r,0,TAU); ctx.fill(); }
@@ -1510,11 +1623,12 @@ function render(alpha){
   const p=World.player; if(p&&p.hp>0&&p.hp/p.hpMax<0.3){ const a=(0.3-p.hp/p.hpMax)/0.3*0.4*(0.6+0.4*Math.sin(WALL*6)); const g=ctx.createRadialGradient(CFG.W/2,CFG.H/2,CFG.H*0.3,CFG.W/2,CFG.H/2,CFG.H*0.8); g.addColorStop(0,'rgba(150,0,0,0)'); g.addColorStop(1,`rgba(150,0,0,${a})`); ctx.fillStyle=g; ctx.fillRect(0,0,CFG.W,CFG.H); }
   const vg=ctx.createRadialGradient(CFG.W/2,CFG.H*0.45,CFG.H*0.4,CFG.W/2,CFG.H*0.5,CFG.H*0.95); vg.addColorStop(0,'rgba(0,0,0,0)'); vg.addColorStop(1,'rgba(0,0,0,0.55)'); ctx.fillStyle=vg; ctx.fillRect(0,0,CFG.W,CFG.H);
 
-  if(App.mode==='practice') drawHUDPractice();
+  if(App.mode==='practice' && Game.state!=='intro') drawHUDPractice();
   else if(App.mode==='mp') drawHUDMP();
+  if(App.mode==='practice') drawCutscene();
   if(inGame()) drawToast();
   if(inGame()) drawIntro();
-  if(App.mode==='practice' && Game.state!=='playing') drawScreenPractice();
+  if(App.mode==='practice' && (Game.state==='waveclear'||Game.state==='gameover')) drawScreenPractice();
 }
 
 /* ---------- §20  HUD + screens ---------- */
@@ -1693,12 +1807,12 @@ function handleNet(m){
 
 /* ---------- §23  Mode flow ---------- */
 function setGame(s){ Game.state=s; syncOverlayButtons(); }
-function restartPractice(){ resetWorld(); spawnWave(1); setGame('playing'); clearBuffers(); startIntro('FIGHT!','Survive the endless waves'); }
+function restartPractice(){ resetWorld(); spawnWave(1); clearBuffers(); beginCutscene('FIGHT!','Survive the endless waves'); }
 function startPractice(){
-  App.mode='practice'; Game.state='playing';
+  App.mode='practice';
   hideUI(); roomPanel(false); resetWorld(); spawnWave(1); clearBuffers();
   Clock.timeScale=1; Clock.hitstop=0; Clock.slowmo=0;
-  startIntro('FIGHT!','Survive the endless waves');
+  beginCutscene('FIGHT!','Survive the endless waves');
   updateTouchVisibility();
 }
 function enterArenaMP(){
@@ -1737,10 +1851,15 @@ function frame(nowMs){
     WALL+=dt; menuTime+=dt;
 
     if(App.mode==='practice'){
-      if(actionPressed('pause')){ if(Game.state==='gameover'||Game.state==='playing'){ backToMenu(); endFrameInput(); render(0); return; } }
-      if(Game.state==='waveclear'){ World.waveTimer-=dt; if(World.waveTimer<=0){ const pl=World.player; if(pl.hp>0){ pl.hp=Math.min(pl.hpMax,pl.hp+Math.round(pl.hpMax*0.30)); spawnWave(World.wave+1); setGame('playing'); clearBuffers(); } } }
-      if(Game.state==='gameover' && actionPressed('confirm')){ restartPractice(); }
-      stepSim(dt, fixedUpdatePractice, Game.state==='playing');
+      if(actionPressed('pause')){ if(Game.state==='gameover'||Game.state==='playing'||Game.state==='intro'){ backToMenu(); endFrameInput(); render(0); return; } }
+      if(Game.state==='intro'){
+        if(Cutscene.t>0.25 && (Input.pressed.size>0||Touch.left||Touch.right||Touch.heavy||Touch.block)) Cutscene.t=0.25;   // skip
+        updateCutscene(dt);
+      } else {
+        if(Game.state==='waveclear'){ World.waveTimer-=dt; if(World.waveTimer<=0){ const pl=World.player; if(pl.hp>0){ pl.hp=Math.min(pl.hpMax,pl.hp+Math.round(pl.hpMax*0.30)); spawnWave(World.wave+1); setGame('playing'); clearBuffers(); } } }
+        if(Game.state==='gameover' && actionPressed('confirm')){ restartPractice(); }
+        stepSim(dt, fixedUpdatePractice, Game.state==='playing');
+      }
     } else if(App.mode==='mp'){
       if(actionPressed('pause')){ leaveMP(''); endFrameInput(); render(0); return; }
       stepSim(dt, fixedUpdateMP, true);
