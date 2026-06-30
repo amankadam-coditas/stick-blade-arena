@@ -33,13 +33,18 @@ needed** — Cloud Run's managed TLS just works.
 ```bash
 gcloud run deploy stick-blade-arena \
   --source . \
-  --region us-central1 \
+  --region asia-south1 \
   --allow-unauthenticated \
   --port 8080 \
   --max-instances 1 \
   --concurrency 250 \
   --timeout 3600
 ```
+
+> **Region:** this game is deployed to **`asia-south1` (Mumbai)** for low latency to players in
+> India. Pick the region nearest your players — `us-central1` (Iowa), `europe-west1` (Belgium),
+> `asia-southeast1` (Singapore), etc. The region is part of the Service URL, so changing it
+> produces a **new URL**.
 
 - `--source .` builds the image from the included `Dockerfile` via Cloud Build, then deploys it.
 - `--max-instances 1` keeps all players on one instance so they share the in-memory rooms. **Do not raise this** unless you add a shared backend (see "Scaling" below).
@@ -67,7 +72,7 @@ By default the instance scales to zero when idle (cheapest; the first visitor wa
 seconds for a cold start). To keep it warm:
 
 ```bash
-gcloud run services update stick-blade-arena --region us-central1 --min-instances 1
+gcloud run services update stick-blade-arena --region asia-south1 --min-instances 1
 ```
 
 (That keeps one instance running 24/7, which costs a bit even when idle.)
@@ -107,4 +112,4 @@ the VM and TLS yourself. Cloud Run is less work for this game.
 - **`/health`** returns `ok` — handy for uptime checks.
 - **Cost:** with `--min-instances 0` (default) and Cloud Run's free tier, occasional play is
   effectively free. A warm instance (`--min-instances 1`) is a small monthly cost.
-- **Region:** `us-central1` is just an example — pick one near your players for lower latency.
+- **Region:** deployed to `asia-south1` (Mumbai) for India. Pick one near your players for lower latency.
