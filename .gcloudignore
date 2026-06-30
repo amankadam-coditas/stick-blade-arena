@@ -1,0 +1,7 @@
+# Keep the Cloud Build upload small & clean (node_modules is rebuilt in the image)
+node_modules
+npm-debug.log
+.git
+.gitignore
+*.log
+.DS_Store
