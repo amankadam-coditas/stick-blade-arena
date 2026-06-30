@@ -1,8 +1,10 @@
 # Stick Blade Arena
 
 A browser-based 2D stickman sword fighter — articulated stick figures, light/heavy attacks,
-blocking & parries, screen shake, hit-stop, blood/sparks, sword trails, a parallax night sky,
-and fully procedural WebAudio sound. Two modes:
+**charged heavies**, blocking & parries, **dodge-rolls with i-frames**, **blade-on-blade clash
+locks**, **cinematic slow-mo finishes**, **boss waves**, a **kill-streak announcer**, screen shake,
+hit-stop, blood/sparks, sword trails, a haunted parallax night sky, and fully procedural WebAudio
+sound. Two modes:
 
 - **Practice vs AI** — wave-survival against grunt / berserker / heavy enemies that approach,
   telegraph, block and fight back. No server needed; just open the page.
@@ -26,11 +28,68 @@ your new weapon:
 | Spear | long (~154px) | medium (×1.15) | poke from range |
 | Knife | shortest (~94px) | highest (×2.1) | glass-cannon finisher |
 
+### Blade clash & slow-mo finish (both modes)
+
+- **Clash lock** — when two opposing fighters' blades cross mid-swing, they **lock** instead of
+  passing through: hitstop, a camera punch-in, twin spark fans, a ringing-steel sound. The stronger
+  blow (heavy beats light, weighted by weapon) **wins the lock** and is free to swing again; the
+  loser is staggered and flung back. Equal power → both deflect apart. In PvP each client resolves
+  the clash for its own fighter, so it works cleanly over the relay netcode.
+- **Slow-mo finish** — the killing blow drops time to ~20% and eases it back over half a second,
+  with a cool "adrenaline tunnel" vignette, a white flash, a deep camera zoom, and a descending
+  *whoom*. The **final kill of a wave** gets an extra-dramatic, longer version. In PvP the killer
+  gets the slow-mo when the kill is confirmed.
+
+### Combat moves (both modes)
+
+- **Dodge-roll / dash** — tap `L` (or **double-tap** a direction; **DASH** button on touch) for a quick
+  burst with **invincibility frames** and an afterimage smear, on a short cooldown. Escape combos,
+  dodge through attacks, or close distance. The i-frames work in PvP too.
+- **Charged heavy** — *hold* the heavy button to wind up; an aura grows and crackles, then **release**
+  to strike. A near-full charge **breaks an enemy's guard** (only a perfect parry still stops it) and
+  hits much harder with extra knockback and a snappier swing. A quick tap is just a normal heavy.
+
+### Boss waves (Practice)
+
+Every **5th wave** a **giant stickman boss** rises (its own intro banner + on-screen **health bar**).
+It telegraphs a **ground slam** — a danger ring fills under it, then a shockwave erupts that damages
+and launches you unless you **dash, jump, or block** in time. Beat it for a big slow-mo finish, a
+score bounty, and a **weapon-up + health** drop.
+
+### Announcer
+
+Rapid and sustained kills trigger callouts with a sound sting — **First Blood**, **Double / Triple /
+Multi / Monster Kill** (kills in quick succession), and spree milestones **Killing Spree → Rampage →
+Unstoppable → Godlike**. Dying resets your spree. A **FIGHT!** / **DEATHMATCH** banner opens each run.
+
+### Mid-arena pickups (Practice)
+
+Glowing tokens rise from the ground each wave — a beam of light with a bobbing core. Walk over one
+to grab it:
+
+| Pickup | Effect |
+|---|---|
+| ❤ **Health** | Restores 35% HP (more likely to appear when you're hurt) |
+| 🔥 **Fury** | 8s rampage: **+60% damage, +30% speed, 30% lifesteal**, glowing aura + HUD timer |
+| 💣 **Bomb** | Grab-to-detonate AoE nuke — 240px blast with falloff damage and launch knockback |
+| ⤴ **Weapon Up** | Instantly bumps your kill-streak weapon one tier |
+
+### 🌙 Blood Moon (Practice)
+
+Every **4th wave** turns into a Blood Moon: the moon bleeds crimson with a red corona, the sky
+washes red, lightning cracks and a howl rises, and a big banner announces it. The enemies grow
+restless — **+2 fighters, all enraged**: faster, hit harder, far more aggressive, and they barely
+block. To balance the chaos, Blood Moon waves drop **two pickups** instead of one.
+
 ### Atmosphere
 
-A stormy night arena: drifting parallax mountains & fog, a glowing moon, **rain**, periodic
-**lightning** (flash + bolt + thunder), flickering **torches**, dead trees and rocks, plus juicy
-**blood** spray, mist and lingering ground stains.
+A stormy, haunted night arena: drifting parallax mountains & fog, a glowing moon, **rain**, periodic
+**lightning** (flash + bolt + thunder), flickering **torches**, dead trees, rocks, **gravestones and
+skulls**, plus juicy **blood** spray, mist and lingering ground stains.
+
+**Night life & horror:** a flock of **bats** wheels across the sky (and scatters when lightning
+strikes), pairs of **glowing eyes** blink in the dark treeline, eerie **will-o'-wisp spirits** drift
+along the ground, and a distant **howl** sounds at random intervals.
 
 ## Controls
 
@@ -39,7 +98,8 @@ A stormy night arena: drifting parallax mountains & fog, a glowing moon, **rain*
 | Move | `A` / `D` (or ← →) |
 | Jump | `W` / `Space` (or ↑) |
 | Light slash | `J` / **Left click** |
-| Heavy attack | `K` / **Right click** |
+| Heavy attack | `K` / **Right click** — **hold to charge** (guard-breaks near full), release to strike |
+| Dodge-roll / dash | `L` or **double-tap** `A`/`D` — i-frames + short cooldown |
 | Block & parry | `S` / `Shift` (or ↓) — a block in the first 0.16 s **parries** and stuns the attacker |
 | Scoreboard (online) | hold `Tab` |
 | Menu / leave | `Esc` |
@@ -49,7 +109,7 @@ A stormy night arena: drifting parallax mountains & fog, a glowing moon, **rain*
 On phones and tablets the controls appear automatically (and hide again on desktop):
 
 - **Left side — floating joystick:** touch anywhere on the left to move; push **up** to jump.
-- **Right side — action buttons:** 🗡 Slash · 💥 Heavy · ⤒ Jump · 🛡 Block (hold to block / tap-and-hold for a parry).
+- **Right side — action buttons:** 🗡 Slash · 💥 Heavy (hold to charge) · 💨 Dash · ⤒ Jump · 🛡 Block (hold to block / tap-and-hold for a parry).
 - **Fullscreen button** (⛶, top-right) toggles fullscreen.
 - The controls are deliberately low-opacity so the fight stays visible. Play in **landscape** —
   a prompt appears if you're in portrait.
