@@ -2,13 +2,17 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>Stick Blade Arena — 2D Stickman Sword Fighter</title>
 <style>
   :root{ --gold:#ffd24d; --ink:#0b1020; }
   html,body{margin:0;height:100%;background:#05060c;overflow:hidden;
     font-family:'Segoe UI',system-ui,sans-serif;color:#eaf2ff;
     -webkit-user-select:none;user-select:none;touch-action:none}
+  *{touch-action:none}
   #wrap{position:fixed;inset:0;display:flex;align-items:center;justify-content:center}
   canvas{display:block;background:#05060c}
   /* ---- menu / lobby overlay ---- */
@@ -49,7 +53,7 @@
     border:1px solid #2a3656;border-radius:12px;padding:10px 12px;font-size:13px;min-width:150px;display:none}
   #roompanel.show{display:block}
   #roompanel .code{font:800 24px monospace;letter-spacing:.18em;color:var(--gold)}
-  #rpPlayers{margin:8px 0;max-height:160px;overflow:auto}
+  #rpPlayers{margin:8px 0;max-height:160px;overflow:auto;touch-action:pan-y}
   #rpPlayers .pl{display:flex;align-items:center;gap:7px;padding:2px 0}
   #rpPlayers .dot{width:11px;height:11px;border-radius:3px;flex:none}
   #roompanel button{font-size:13px;padding:7px 12px;margin:4px 0 0;box-shadow:0 3px 0 #b8902a}
@@ -91,7 +95,7 @@
   #rotate{position:fixed;inset:0;z-index:20;display:none;align-items:center;justify-content:center;
     flex-direction:column;gap:14px;background:#05060c;color:#cdd9ec;font-size:22px;text-align:center;padding:24px}
   @media (pointer:coarse) and (orientation:portrait){ body.ingame #rotate{display:flex} }
-  #err{position:fixed;left:0;right:0;bottom:0;max-height:40%;overflow:auto;
+  #err{position:fixed;left:0;right:0;bottom:0;max-height:40%;overflow:auto;touch-action:pan-y;
     background:#300;color:#fdd;font:12px/1.4 monospace;padding:8px;display:none;z-index:9}
 </style>
 </head>
@@ -1946,10 +1950,38 @@ function updateTouchVisibility(){ const ig=inGame(); document.body.classList.tog
   const el=$('touch'); if(el) el.classList.toggle('hidden', !(isTouchDevice() && ig));
   const ex=$('btnExit'); if(ex) ex.style.display=ig?'flex':'none';   // Menu/quit button while in a game (works on mobile + desktop)
   syncOverlayButtons(); }
-function toggleFullscreen(){ try{ const d=document, el=d.documentElement;
-  if(!d.fullscreenElement && !d.webkitFullscreenElement){ (el.requestFullscreen||el.webkitRequestFullscreen||function(){}).call(el); }
-  else { (d.exitFullscreen||d.webkitExitFullscreen||function(){}).call(d); } }catch(e){} }
+function isIOS(){ return /iP(hone|ad|od)/.test(navigator.platform) ||
+  (navigator.userAgent.includes('Mac') && 'ontouchend' in document); }
+function isStandalone(){ return window.navigator.standalone === true || window.matchMedia('(display-mode: standalone)').matches; }
+function toggleFullscreen(){
+  const d=document, el=d.documentElement;
+  const supportsFS = !!(el.requestFullscreen||el.webkitRequestFullscreen);
+  if(!supportsFS || isIOS()){
+    // iOS Safari/Chrome never implement the Fullscreen API for page content
+    // (only <video> gets webkitEnterFullscreen). Best we can do is scroll the
+    // collapsible address bar out of the way, or point the user at "Add to
+    // Home Screen" which launches truly chrome-less via the apple-mobile-web-app meta tags above.
+    if(isStandalone()){ return; }
+    window.scrollTo(0,1);
+    setTimeout(()=>window.scrollTo(0,1),300);
+    const b=$('btnFull');
+    if(b && !b.dataset.hinted){ b.dataset.hinted='1';
+      b.title='iOS limitation: use Share ▸ Add to Home Screen for true full-screen'; }
+    return;
+  }
+  try{
+    if(!d.fullscreenElement && !d.webkitFullscreenElement){ (el.requestFullscreen||el.webkitRequestFullscreen).call(el); }
+    else { (d.exitFullscreen||d.webkitExitFullscreen||function(){}).call(d); }
+  }catch(e){}
+}
 $('btnFull').addEventListener('click',e=>{ e.preventDefault(); audioResume(); toggleFullscreen(); });
+// Defense-in-depth: touch-action:none (above) should stop iOS's native
+// double/triple-tap-to-zoom gesture, but older WebKit versions only honor it
+// inconsistently — also swallow the second tap of any rapid tap sequence.
+(function(){ let lastTouchEnd=0;
+  document.addEventListener('touchend', e=>{ const now=Date.now();
+    if(now-lastTouchEnd<=350) e.preventDefault(); lastTouchEnd=now; }, {passive:false, capture:true});
+})();
 function applyMuteIcon(){ const b=$('btnMute'); if(b){ b.textContent=Audio.muted?'🔇':'🔊'; b.title=(Audio.muted?'Unmute':'Mute')+' sound'; } }
 function setMuted(m){ Audio.muted=m; try{ localStorage.setItem('sba_muted', m?'1':'0'); }catch(e){}
   if(Audio.master) Audio.master.gain.value = m?0:Audio.vol; applyMuteIcon(); }
