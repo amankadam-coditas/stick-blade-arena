@@ -3,7 +3,7 @@ FROM node:20-alpine
 
 WORKDIR /app
 
-# Install only production deps (just "ws") using the lockfile for reproducible builds
+# Deps are pure-JS ("ws" + "@google-cloud/firestore"), so no build toolchain needed
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev
 

@@ -48,6 +48,21 @@
   .msg.ok{color:#8fe6a0}
   .hint{color:#7d90b6;font-size:13px;margin-top:16px;line-height:1.5}
   .hint code{background:#0b1124;padding:2px 6px;border-radius:5px;color:#cfe0ff}
+  /* ---- leaderboard screen ---- */
+  .lbtabs{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin:0 0 18px}
+  .lbtab{font:600 14px 'Segoe UI',sans-serif;color:#bcd;background:rgba(16,22,44,.7);
+    border:1px solid #2a3656;border-radius:10px;padding:9px 14px;margin:0;box-shadow:none;cursor:pointer}
+  .lbtab:hover{transform:none;color:#eaf2ff}
+  .lbtab.on{background:var(--gold);color:var(--ink);border-color:var(--gold)}
+  .lbtab.on:active{transform:none}
+  #lbBody{min-height:200px;max-width:560px;margin:0 auto}
+  table.lb{width:100%;border-collapse:collapse;font-size:16px}
+  table.lb th{color:#9fb6d8;font-size:12px;letter-spacing:.06em;text-align:right;padding:6px 10px;font-weight:600}
+  table.lb th.l,table.lb td.l{text-align:left}
+  table.lb td{padding:9px 10px;border-top:1px solid #1e2942;text-align:right;color:#cdd9ec}
+  table.lb tr:nth-child(1) td{color:#ffd24d;font-weight:700}
+  table.lb .rk{color:#7d90b6;width:38px}
+  table.lb .empty{color:#7d90b6;text-align:center;padding:40px 0}
   /* ---- in-game room panel ---- */
   #roompanel{position:fixed;top:12px;left:12px;z-index:4;background:rgba(8,12,26,.72);
     border:1px solid #2a3656;border-radius:12px;padding:10px 12px;font-size:13px;min-width:150px;display:none}
@@ -108,6 +123,20 @@
     <p class="sub">a 2D stickman sword arena</p>
     <button id="btnPractice" class="big">⚔  Practice vs AI</button>
     <button id="btnOnline" class="big">🌐  Play Online — PvP</button>
+    <button id="btnBoard" class="big ghost">🏆  Leaderboard</button>
+  </div>
+
+  <div id="leaderboard" class="screen">
+    <h2>🏆  Leaderboard</h2>
+    <div class="lbtabs" id="lbTabs">
+      <button class="lbtab on" data-board="score">Practice · Score</button>
+      <button class="lbtab" data-board="wave">Practice · Wave</button>
+      <button class="lbtab" data-board="kills">Practice · Kills</button>
+      <button class="lbtab" data-board="mp">Online · Kills</button>
+    </div>
+    <div id="lbBody"></div>
+    <p id="lbMsg" class="msg"></p>
+    <button id="btnBoardBack" class="ghost">← Back</button>
   </div>
 
   <div id="online" class="screen">
@@ -598,6 +627,7 @@ function resetWorld(){
   World.enemies.length=0; World.score=0; World.combo=0; World.comboT=0; World.wave=0; World.kills=0; World.tension=0;
   World.pickups.length=0; World.bloodMoon=false; Sky.blood=0; pickupBagI=0;
   Announce.spree=0; Announce.multi=0; Announce.lastKillT=-99; Announce.first=true; Intro.t=0;
+  Board.practiceSubmitted=false;
   Particles.clear(); Stains.clear(); flashes.length=0; whiteout=0; vignettePulse=0;
   Cam.x=World.player.x; Cam.y=CFG.GROUND_Y-160; Cam.zoom=1; Cam.tz=1; Shake.trauma=0;
 }
@@ -1194,7 +1224,7 @@ function fixedUpdatePractice(dt){
   if(World.comboT>0){ World.comboT-=dt; if(World.comboT<=0){ World.combo=0; World.player.combo=0; } }
   World.tension=clamp(World.tension-0.12*dt,0,1);
   if(World.player.hp<=0 && World.player.deathT<0) killPractice(World.player,null);
-  if(World.player.hp<=0 && World.player.deathT>0.9 && Game.state==='playing') setGame('gameover');
+  if(World.player.hp<=0 && World.player.deathT>0.9 && Game.state==='playing'){ setGame('gameover'); Board.submitPractice(); }
   if(Game.state==='playing' && World.player.hp>0 && aliveEnemies()===0 && World.enemies.length>0){ setGame('waveclear'); World.waveTimer=2.0; }
 }
 
@@ -1735,6 +1765,44 @@ const Score={ map:new Map(),
   remove(id){ this.map.delete(id); },
   clear(){ this.map.clear(); } };
 
+/* ---------- §21b  Leaderboard (SQLite-backed, via /api) ---------- */
+const Board={
+  data:null, cur:'score', practiceSubmitted:false,
+  getName(){ let n=''; try{ n=localStorage.getItem('sba_name')||''; }catch(e){} return n||'Player'; },
+  setName(n){ try{ localStorage.setItem('sba_name', (n||'').slice(0,14)); }catch(e){} },
+  offline(){ return location.protocol==='file:'; },
+  submit(payload){ if(this.offline()) return;
+    try{ fetch('/api/score',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)}); }catch(e){} },
+  submitPractice(){ if(this.practiceSubmitted) return; this.practiceSubmitted=true;
+    let stored=''; try{ stored=localStorage.getItem('sba_name')||''; }catch(e){}
+    if(!stored){ let n=''; try{ n=(window.prompt('Enter a name for the leaderboard:','')||'').trim(); }catch(e){}
+      this.setName(n||'Player'); }   // ask once ever; store even 'Player' so we never nag again
+    this.submit({mode:'practice', name:this.getName(), score:World.score, wave:World.wave, kills:World.kills}); },
+  submitMP(){ const me=Score.map.get(Net.id); if(!me) return; if((me.kills|0)===0 && (me.deaths|0)===0) return;
+    this.submit({mode:'mp', name:me.name||this.getName(), kills:me.kills, deaths:me.deaths}); },
+  async open(){ showScreen('leaderboard'); this.render(); const msg=$('lbMsg'); msg.textContent='';
+    if(this.offline()){ this.data=null; msg.textContent='Leaderboard needs the server (run node server.js).'; this.render(); return; }
+    try{ const r=await fetch('/api/leaderboard',{cache:'no-store'}); this.data=await r.json(); msg.textContent=''; }
+    catch(e){ this.data=null; msg.textContent='Could not load leaderboard.'; }
+    this.render(); },
+  render(){ const body=$('lbBody'); if(!body) return; const d=this.data; const b=this.cur;
+    const rows = d ? (b==='mp'?d.mp.kills:d.practice[b]) : null;
+    const esc=s=>(''+s).replace(/[<&>]/g,c=>({'<':'&lt;','&':'&amp;','>':'&gt;'}[c]));
+    if(!rows || !rows.length){ body.innerHTML='<div class="empty">'+(d?'No scores yet — be the first!':'—')+'</div>'; return; }
+    let head, cells;
+    if(b==='mp'){ head='<th class="l">Player</th><th>Kills</th><th>Deaths</th>';
+      cells=r=>`<td class="l">${esc(r.name)}</td><td>${r.kills}</td><td>${r.deaths}</td>`; }
+    else if(b==='wave'){ head='<th class="l">Player</th><th>Wave</th><th>Score</th><th>Kills</th>';
+      cells=r=>`<td class="l">${esc(r.name)}</td><td>${r.wave}</td><td>${r.score}</td><td>${r.kills}</td>`; }
+    else if(b==='kills'){ head='<th class="l">Player</th><th>Kills</th><th>Wave</th><th>Score</th>';
+      cells=r=>`<td class="l">${esc(r.name)}</td><td>${r.kills}</td><td>${r.wave}</td><td>${r.score}</td>`; }
+    else { head='<th class="l">Player</th><th>Score</th><th>Wave</th><th>Kills</th>';
+      cells=r=>`<td class="l">${esc(r.name)}</td><td>${r.score}</td><td>${r.wave}</td><td>${r.kills}</td>`; }
+    let html='<table class="lb"><tr><th class="rk"></th>'+head+'</tr>';
+    rows.forEach((r,i)=>{ html+='<tr><td class="rk">'+(i+1)+'</td>'+cells(r)+'</tr>'; });
+    body.innerHTML=html+'</table>'; },
+};
+
 /* ---------- §22  Networking ---------- */
 const Net={
   ws:null, id:null, slot:0, room:null, owner:null, max:8, myName:'Fighter',
@@ -1836,6 +1904,7 @@ function enterArenaMP(){
   updateTouchVisibility();
 }
 function leaveMP(msg){
+  Board.submitMP();
   Net.send({t:'leave'});
   try{ if(Net.ws){ Net.ws.onclose=null; Net.ws.close(); } }catch(e){}
   Net.ws=null; Net.remotes.clear(); Net.rebuildList(); Score.clear();
@@ -1942,6 +2011,15 @@ $('btnJoin').onclick=()=>{ audioResume(); Net.myName=($('inName').value||'Fighte
   if(Net.ws&&Net.ws.readyState===1) Net.send(Net.pending); else connectNet(); };
 $('inCode').addEventListener('keydown',e=>{ if(e.key==='Enter') $('btnJoin').click(); });
 $('inName').addEventListener('keydown',e=>{ if(e.key==='Enter') $('inCode').focus(); });
+
+// shared player name (used by both practice & online leaderboards) + leaderboard screen
+try{ const sn=localStorage.getItem('sba_name'); if(sn) $('inName').value=sn; }catch(e){}
+$('inName').addEventListener('input',()=>Board.setName($('inName').value));
+$('btnBoard').onclick=()=>{ audioResume(); Board.open(); };
+$('btnBoardBack').onclick=()=>{ showScreen('menu'); };
+$('lbTabs').addEventListener('click',e=>{ const b=e.target.closest('.lbtab'); if(!b) return;
+  $('lbTabs').querySelectorAll('.lbtab').forEach(t=>t.classList.toggle('on',t===b));
+  Board.cur=b.dataset.board; Board.render(); });
 
 /* ---------- §25b  Touch controls + fullscreen ---------- */
 function isTouchDevice(){ try{ return window.matchMedia('(pointer:coarse)').matches || ('ontouchstart' in window) || navigator.maxTouchPoints>0; }catch(e){ return 'ontouchstart' in window; } }

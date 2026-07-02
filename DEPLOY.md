@@ -25,8 +25,10 @@ needed** — Cloud Run's managed TLS just works.
 3. Enable the APIs used to build & run the container:
 
    ```bash
-   gcloud services enable run.googleapis.com cloudbuild.googleapis.com artifactregistry.googleapis.com
+   gcloud services enable run.googleapis.com cloudbuild.googleapis.com artifactregistry.googleapis.com firestore.googleapis.com
    ```
+
+   (The leaderboard uses Firestore — see "Leaderboard persistence" below for its one-time setup.)
 
 ### 2. Deploy (from this folder)
 
@@ -78,6 +80,51 @@ gcloud run services update stick-blade-arena --region asia-south1 --min-instance
 (That keeps one instance running 24/7, which costs a bit even when idle.)
 
 ---
+
+## Leaderboard persistence (Firestore)
+
+The game keeps a **Firestore** leaderboard with practice boards (Score / Wave / Kills) and an
+online PvP board (Kills). The server reads/writes it via `/api/leaderboard` and `/api/score`
+(collections `practice` and `mp`). Firestore is serverless and **durable** — data survives cold
+starts *and* redeploys with **no volume, no keep-warm instance, and no code changes** — and fits
+comfortably in the perpetual free tier (1 GiB storage + 20K writes / 50K reads per day).
+
+### One-time setup
+
+1. Enable the API and create the database (Native mode). The Firestore **location is set once per
+   project and cannot be changed later**, so pick your region deliberately:
+
+   ```bash
+   gcloud services enable firestore.googleapis.com
+   gcloud firestore databases create --location=asia-south1
+   ```
+
+   (Use a multi-region like `nam5` or `eur3` for wider redundancy if you prefer.)
+
+2. **Permissions:** the Cloud Run service runs as the project's default compute service account,
+   which needs Firestore access. On a fresh project grant it once:
+
+   ```bash
+   PROJECT_ID=$(gcloud config get-value project)
+   PROJECT_NUM=$(gcloud projects describe "$PROJECT_ID" --format='value(projectNumber)')
+   gcloud projects add-iam-policy-binding "$PROJECT_ID" \
+     --member="serviceAccount:${PROJECT_NUM}-compute@developer.gserviceaccount.com" \
+     --role="roles/datastore.user"
+   ```
+
+   (If the service account still has the broad `Editor` role from a new project, this is already
+   covered — but granting `datastore.user` explicitly is the least-privilege choice.)
+
+That's it — the normal `gcloud run deploy` command above needs no extra flags. The boards are
+created lazily on first write; single-field descending indexes are auto-created by Firestore.
+
+### Notes
+
+- **Local dev:** without credentials the game still runs — the leaderboard just won't persist.
+  To test it locally, either run the Firestore emulator and set `FIRESTORE_EMULATOR_HOST`, or set
+  `GOOGLE_APPLICATION_CREDENTIALS` to a service-account key.
+- **Scores are client-reported** (the server is a relay and can't verify them), so treat the board
+  as friendly bragging rights, not anti-cheat-grade.
 
 ## Scaling beyond one instance (only if you need it)
 
